@@ -1,0 +1,41 @@
+#!/bin/bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -ex
+. `dirname $0`/bigtop.bom
+
+MVN_ARGS="-DskipTests "
+MVN_ARGS+="-Dhadoop.version=$HADOOP_VERSION "
+MVN_ARGS+="-Dhbase.version=$HBASE_VERSION "
+MVN_ARGS+="-Dhbase.profile=${HBASE_VERSION%.*} "
+
+# create com.google.protobuf:protoc artifact with local protoc built by toolchain
+if [ $HOSTTYPE = "powerpc64le" ] ; then
+  mvn install:install-file -DgroupId=com.google.protobuf -DartifactId=protoc -Dversion=2.5.0 \
+            -Dclassifier=linux-ppcle_64 -Dpackaging=exe -Dfile=/usr/local/protobuf-2.5.0/bin/protoc
+  MVN_ARGS+="-Dprotobuf.group=com.google.protobuf -Dprotoc.version=2.5.0 "
+elif [ $HOSTTYPE = "aarch64" ] ; then
+  mvn install:install-file -DgroupId=com.google.protobuf -DartifactId=protoc -Dversion=2.5.0 \
+            -Dclassifier=linux-aarch_64 -Dpackaging=exe -Dfile=/usr/local/protobuf-2.5.0/bin/protoc
+  MVN_ARGS+="-Dprotobuf.group=com.google.protobuf -Dprotoc.version=2.5.0 "
+fi
+
+mvn ${MVN_ARGS} clean install "$@"
+
+rm -rf build
+mkdir build
+
+tar -C build --strip-components=1 -xzf phoenix-assembly/target/phoenix-hbase-${HBASE_VERSION%.*}-${PHOENIX_VERSION}-bin.tar.gz

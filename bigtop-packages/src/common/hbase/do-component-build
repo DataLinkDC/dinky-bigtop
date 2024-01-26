@@ -1,0 +1,65 @@
+#!/bin/bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -ex
+
+. `dirname $0`/bigtop.bom
+
+export MAVEN_OPTS="-Xmx1024m"
+
+MVN_ARGS="-Phadoop-3.0 "
+MVN_ARGS+="-Dhadoop-three.version=${HADOOP_VERSION} "
+MVN_ARGS+="-Dhadoop.guava.version=27.0-jre "
+MVN_ARGS+="-Djetty.version=9.3.29.v20201019 "
+MVN_ARGS+="-Dzookeeper.version=${ZOOKEEPER_VERSION} "
+MVN_ARGS+="-DskipTests "
+MVN_ARGS+="-Dcheckstyle.skip=true "
+
+if [ "${BIGTOP_JDK:=8}" == "8" ]; then
+    MAVEN_ADDITIONAL="-Dadditionalparam=-Xdoclint:none"
+fi
+
+if [ $HOSTTYPE = "powerpc64le" ] ; then
+  sed -i "s|<asciidoctor.plugin.version>.*</asciidoctor.plugin.version>|<asciidoctor.plugin.version>1.5.3</asciidoctor.plugin.version>|" pom.xml
+  sed -i 's|<asciidoctorj.pdf.version>.*</asciidoctorj.pdf.version>|<asciidoctorj.pdf.version>1.5.0-alpha.11</asciidoctorj.pdf.version>|' pom.xml
+  mvn install:install-file -DgroupId=com.google.protobuf -DartifactId=protoc -Dversion=2.5.0 \
+      -Dclassifier=linux-ppcle_64 -Dpackaging=exe -Dfile=/usr/local/protobuf-2.5.0/bin/protoc
+  mvn install:install-file -DgroupId=com.google.protobuf -DartifactId=protoc -Dversion=3.17.3 \
+      -Dclassifier=linux-ppcle_64 -Dpackaging=exe -Dfile=/usr/local/protobuf-3.17.3/bin/protoc
+  MVN_ARGS+="-Dexternal.protobuf.groupid=com.google.protobuf -Dexternal.protoc.version=2.5.0 "
+fi
+
+if [ $HOSTTYPE = "aarch64" ] ; then
+  sed -i '/asciidoctorj-pdf/!{p;d;};n;n;a'\
+'\          <dependency>\n'\
+'\             <groupId>org.jruby<\/groupId>\n'\
+'\             <artifactId>jruby-complete<\/artifactId>\n'\
+'\             <version>9.1.8.0</version>\n'\
+'\          <\/dependency>' pom.xml
+  mvn install:install-file -DgroupId=com.google.protobuf -DartifactId=protoc -Dversion=2.5.0 \
+      -Dclassifier=linux-aarch_64 -Dpackaging=exe -Dfile=/usr/local/protobuf-2.5.0/bin/protoc
+  MVN_ARGS+="-Dexternal.protobuf.groupid=com.google.protobuf -Dexternal.protoc.version=2.5.0 "
+fi
+
+# HBASE-21513: separate site and assembly:single to avoid assembly issues.
+mvn ${MVN_ARGS} ${MAVEN_ADDITIONAL} clean install "$@"
+mvn ${MVN_ARGS} ${MAVEN_ADDITIONAL} site "$@"
+mvn ${MVN_ARGS} ${MAVEN_ADDITIONAL} package assembly:single "$@"
+
+rm -rf build
+mkdir build
+tar -C build --strip-components=1 -xzf hbase-assembly/target/hbase-${HBASE_VERSION}-bin.tar.gz
+tar -C build --strip-components=1 -xzf hbase-assembly/target/hbase-${HBASE_VERSION}-client-bin.tar.gz
